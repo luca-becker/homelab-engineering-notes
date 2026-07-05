@@ -5,7 +5,7 @@ import mdx from '@astrojs/mdx';
 // Beim Umzug auf eine eigene Domain: `site` auf die Domain setzen und `base`
 // auf '/' ändern (bzw. entfernen).
 export default defineConfig({
-  site: 'https://luca-becker.github.io',
+  site: 'https://ruuntii.github.io',
   base: '/homelab-engineering-notes/',
   integrations: [mdx()],
 });

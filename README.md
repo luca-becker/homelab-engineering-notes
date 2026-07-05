@@ -1,6 +1,6 @@
 # Homelab Engineering Notes
 
-**Live:** https://luca-becker.github.io/homelab-engineering-notes/
+**Live:** https://ruuntii.github.io/homelab-engineering-notes/
 
 Öffentliche, statische Portfolio-Seite mit drei Engineering-Case-Studies aus meinem privaten
 Homelab (Observability, Backup & Resilience, Public-Edge & Routing).
