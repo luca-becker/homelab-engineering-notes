@@ -1,0 +1,66 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = 'Engineering Notes — Homelab-Infrastruktur, Observability, Backup & Public-Edge.' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="wrap">
+        <a class="brand" href="/"><span class="prompt">~/</span>homelab-notes</a>
+        <nav>
+          <a href="/#case-studies">Case&nbsp;Studies</a>
+          <a href="/#stack">Stack</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <slot />
+    </main>
+
+    <footer>
+      <div class="wrap" style="padding:0;">
+        Engineering Notes · privates Homelab · statisch generiert mit Astro.<br />
+        Alle Beispiele generisch / sanitisiert — keine echten Hostnames, IPs oder Secrets.
+      </div>
+    </footer>
+
+    <script>
+      import mermaid from 'mermaid';
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'base',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        themeVariables: {
+          background: '#161d29',
+          primaryColor: '#161d29',
+          primaryBorderColor: '#4dd4b0',
+          primaryTextColor: '#d6dee9',
+          lineColor: '#5f6b7c',
+          secondaryColor: '#1c2431',
+          tertiaryColor: '#131a24',
+          clusterBkg: '#131a24',
+          clusterBorder: '#232c3b',
+          edgeLabelBackground: '#0d1117',
+          fontSize: '14px',
+        },
+      });
+    </script>
+  </body>
+</html>

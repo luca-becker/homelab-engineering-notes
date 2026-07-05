@@ -1,0 +1,101 @@
+---
+layout: ../../layouts/CaseStudyLayout.astro
+title: 'Public-Edge & Routing'
+summary: 'Öffentliche Erreichbarkeit ohne einen einzigen offenen Inbound-Port — via Noise-verschlüsseltem Reverse-Tunnel, Reverse-Proxy mit Auto-TLS und loopback-gebundenen Diensten.'
+tags: ['Reverse-Tunnel', 'Caddy', 'Auto-TLS', 'Zero-Inbound', 'Secrets-Mgmt']
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+## Was
+
+Ausgewählte Homelab-Dienste sind öffentlich erreichbar, **ohne am Heimanschluss auch nur einen
+Inbound-Port zu öffnen**. Ein günstiger Public-VPS dient als Edge; der Heim-Host wählt sich per
+**verschlüsseltem Reverse-Tunnel ausgehend** ein. TLS terminiert automatisch am Edge, sensible
+Dienste sind nur an localhost gebunden.
+
+## Problem / Warum
+
+Homelab-Dienste öffentlich anzubieten heißt klassisch: Ports am Router aufmachen, die private
+IP exponieren, die Firewall öffnen. Das wollte ich vermeiden — die Heim-Firewall soll für Inbound
+**komplett geschlossen** bleiben. Gleichzeitig sollen echte öffentliche Clients (nicht nur ich
+selbst per VPN) die Dienste mit gültigem TLS erreichen, und Zugangsdaten dürfen nicht im Code oder
+in Configs landen.
+
+## Architektur
+
+<Mermaid code={`flowchart LR
+  client["Öffentlicher Client"]
+
+  subgraph edge["Edge-VPS (öffentlich)"]
+    caddy["Caddy<br/>Reverse-Proxy + Auto-HTTPS"]
+    tsrv["Tunnel-Server"]
+  end
+
+  subgraph home["Heim-Host (keine offenen Ports)"]
+    tcli["Tunnel-Client<br/>(wählt ausgehend)"]
+    svc["Dienste<br/>(nur 127.0.0.1)"]
+    vault["Secrets-Manager"]
+  end
+
+  client -- "HTTPS :443" --> caddy --> tsrv
+  tcli == "Noise-verschlüsselt<br/>ausgehend, Key-Pinning" ==> tsrv
+  tcli --> svc
+  svc -. "Secrets zur Laufzeit" .-> vault
+`} />
+
+<p class="muted mono" style="font-size:0.78rem;">Generische Knoten. Keine echte Domain, VPS-IP, Tunnel-Token oder internen Ports.</p>
+
+## Umsetzung / Wie
+
+**Stack:** Public-VPS als Edge, Reverse-Tunnel mit **Noise-Protokoll** (verschlüsselt,
+Server-Public-Key-Pinning), Caddy als Reverse-Proxy mit automatischem HTTPS (ACME) am Edge,
+Vaultwarden als Secrets-Manager, alles containerisiert mit Ressourcen-Limits.
+
+Zentrale Design-Entscheidungen:
+
+- **Zero-Inbound am Heimanschluss.** Der Tunnel wird **ausgehend vom Heim-Host** aufgebaut — die
+  Heim-Firewall bleibt für eingehenden Verkehr vollständig geschlossen. Der einzige öffentlich
+  erreichbare Punkt ist der VPS, dessen Angriffsfläche klein und ersetzbar ist.
+- **Verschlüsselter, gepinnter Tunnel.** Der Transport nutzt das Noise-Protokoll mit Pinning des
+  Server-Public-Keys — kein Klartext-Tunnel, kein blindes Vertrauen in DNS/Routing.
+- **TLS-Terminierung am Edge.** Caddy holt und erneuert Zertifikate automatisch (ACME). Zero-Touch
+  TLS, kein manuelles Zertifikats-Handling.
+- **Least exposure der Dienste.** Sensible Dienste (z. B. der Secrets-Manager) sind an
+  `127.0.0.1` gebunden und ausschließlich durch den Tunnel erreichbar — nie direkt im LAN oder
+  öffentlich. Registrierung deaktiviert, Admin-Panel token-gated.
+- **Telemetrie ohne offene Ports am VPS.** Monitoring-Daten vom VPS werden über eine ausgehende
+  SSH-Bridge (`-L`) **zurückgezogen**, statt am VPS Ports zu öffnen — dieselbe Zero-Inbound-Logik
+  in die Gegenrichtung.
+- **Secrets getrennt vom Code.** Zugangsdaten liegen im Secrets-Manager bzw. in mode-600-Dateien
+  außerhalb von Git; Configs enthalten nur Platzhalter, die zur Laufzeit ersetzt werden.
+
+## Entscheidungen (verworfene Alternativen)
+
+| Alternative | Warum verworfen |
+| --- | --- |
+| **Port-Forwarding am Router** | Exponiert die private IP und öffnet die Heim-Firewall. Genau das sollte vermieden werden. |
+| **Nur VPN (WireGuard) für alles** | Ideal für privaten Admin-Zugang, aber **öffentliche** Clients können sich nicht einwählen. Für publikums-erreichbare Dienste ungeeignet. |
+| **Managed Tunnel eines Cloud-Anbieters** | Bequem, aber der Anbieter terminiert TLS und sieht den Traffic. Selbst gehosteter Tunnel = volle Kontrolle, keine Drittpartei im Datenpfad. |
+| **Vorgänger-Tunnel (ältere Lösung)** | Zugunsten einer moderneren Variante mit Noise-Verschlüsselung und Key-Pinning abgelöst — bewusste Technologie-Evaluation und Migration. |
+
+## Outcome
+
+- **Null offene Inbound-Ports** am Heimanschluss bei voller öffentlicher Erreichbarkeit
+  ausgewählter Dienste — Defense-in-Depth statt Firewall-Löchern.
+- **Automatisches, gültiges TLS** für alle öffentlichen Endpunkte ohne manuelles
+  Zertifikats-Management.
+- **Ersetzbarer Edge:** Der VPS hält keinen wertvollen Zustand; fällt er aus oder wird er
+  kompromittiert, ist er neu aufsetzbar, ohne dass interne Dienste exponiert werden.
+- **Bewusste Tech-Evaluation:** dokumentierte Migration von der Vorgänger-Tunnel-Lösung auf eine
+  verschlüsselte, key-gepinnte Variante — inklusive Begründung.
+
+<blockquote>
+<strong>Roadmap / geplant:</strong> aktive fail2ban-Jails (SSH/Proxy) am Edge sind vorbereitet,
+aber noch nicht scharf geschaltet — daher hier als nächster Härtungsschritt aufgeführt und nicht
+als bereits umgesetzte Kontrolle.
+</blockquote>
+
+<blockquote>
+Domain, VPS-IP, Tunnel-Token und interne Ports sind hier bewusst durch generische Knoten ersetzt.
+</blockquote>

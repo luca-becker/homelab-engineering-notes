@@ -1,0 +1,53 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  frontmatter: {
+    title: string;
+    summary: string;
+    tags?: string[];
+  };
+}
+const { frontmatter } = Astro.props;
+---
+
+<BaseLayout title={`${frontmatter.title} · homelab-notes`} description={frontmatter.summary}>
+  <article class="case-study">
+    <a class="back" href="/#case-studies">&larr; Übersicht</a>
+    <h1>{frontmatter.title}</h1>
+    <p class="lede">{frontmatter.summary}</p>
+    {frontmatter.tags && (
+      <div class="tags">
+        {frontmatter.tags.map((t) => <span class="tag">{t}</span>)}
+      </div>
+    )}
+    <slot />
+  </article>
+</BaseLayout>
+
+<style>
+  .case-study { padding: 40px 0 0; }
+  .back {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    display: inline-block;
+    margin-bottom: 24px;
+  }
+  .lede {
+    font-size: 1.12rem;
+    color: var(--fg-muted);
+    line-height: 1.6;
+    margin: 0.2em 0 1em;
+  }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+</style>

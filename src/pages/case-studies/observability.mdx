@@ -1,0 +1,103 @@
+---
+layout: ../../layouts/CaseStudyLayout.astro
+title: 'Observability & Monitoring'
+summary: 'Ein agentloses Monitoring- und Automatisierungssystem über mehrere Hosts — mit Alert-Deduplizierung, Kapazitäts-Forecasting und trust-gated Self-Healing.'
+tags: ['Python', 'SSH-agentless', 'Alerting', 'Forecasting', 'Self-Healing']
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+## Was
+
+Ein selbst gebautes Monitoring-System, das mehrere Homelab-Hosts **agentlos über SSH**
+beobachtet: über 70 diskrete Checks (Disk, Speicher-/IO-Druck, systemd-Dienste,
+Container-Health & -Security, SMART, Zertifikate, Backups, Netz-Exposure). Darauf aufgesetzt:
+Alert-Deduplizierung/-Korrelation, Kapazitäts-Forecasting und eine vorsichtige
+Selbstheilungs-Schicht.
+
+## Problem / Warum
+
+Ein wachsendes Homelab manuell im Blick zu behalten skaliert nicht: Man merkt, dass eine Platte
+volläuft, ein Dienst gestorben ist oder ein Backup seit Tagen scheitert — meistens **zu spät**.
+Fertige Stacks (Prometheus + Grafana + Alertmanager) lösen das Sammeln und Visualisieren gut,
+aber ich wollte drei Dinge in einem System und ohne auf jedem Host einen Agenten zu betreiben:
+
+1. **Erkennen** (Checks), **2. sinnvoll alarmieren** (ohne Alert-Fatigue) und
+**3. teils selbst reagieren** — plus vorausschauende Kapazitätsplanung statt reiner Ist-Werte.
+
+## Architektur
+
+<Mermaid code={`flowchart LR
+  subgraph control["Monitoring-Host"]
+    sched["Scheduler<br/>(Intervall / Cron)"]
+    checks["Check-Framework<br/>70+ Checks"]
+    engine["Alert-Engine<br/>Dedup · Korrelation · Snooze"]
+    fc["Forecasting<br/>Kapazität · SMART-Trend"]
+    heal["Self-Healing<br/>State-Machine"]
+    db[("Zeitreihen<br/>SQLite")]
+  end
+
+  checks -- "SSH (read-only)" --> hostA["host-a"]
+  checks -- "SSH (read-only)" --> hostB["host-b"]
+  checks -- "SSH (read-only)" --> edge["edge-node"]
+
+  sched --> checks --> db
+  db --> fc
+  checks --> engine
+  fc --> engine
+  engine --> notify["Notifier<br/>Push · Chat"]
+  engine --> heal
+  heal -- "gated restart" --> hostA
+`} />
+
+<p class="muted mono" style="font-size:0.78rem;">Alle Knotennamen generisch. Keine echten Hostnames, IPs oder internen Endpunkte.</p>
+
+## Umsetzung / Wie
+
+**Stack:** Python, APScheduler (Intervall-/Cron-Trigger), SQLite (WAL-Modus) als
+Zeitreihenspeicher, eine kleine FastAPI-Read-API, Push-Benachrichtigung (ntfy) und Chat-Alerts.
+Optionale lokale LLM-Anbindung (Ollama) für Root-Cause-Zusammenfassungen — strikt **fail-open**.
+
+Zentrale Design-Entscheidungen:
+
+- **Agentlos über SSH.** Ein sauberes `Check`-Basis-Interface; jeder Check ist eine kleine,
+  testbare Einheit, die read-only Kommandos remote ausführt. Kein Agent-Rollout, keine zusätzliche
+  Angriffsfläche pro Host, Onboarding eines Hosts = ein SSH-Key.
+- **Alert-Engineering als eigene Schicht.** Deduplizierung (identische Alerts werden zusammengefasst),
+  **Korrelation/Burst-Konsolidierung** (viele Symptome eines Root-Cause → ein Alert), Snooze und
+  Maintenance-Windows. Ziel: jeder Alert ist handlungsrelevant.
+- **Forecasting statt nur Ist-Werte.** Lineare Trend-Projektion für Disk/Speicher bis zur
+  90/95-%-Schwelle; SMART-Werte werden über die Zeit fortgeschrieben, um Platten-Ausfälle
+  **vor** dem Ereignis zu melden.
+- **Trust-gated Self-Healing.** Automatische Dienst-Neustarts durchlaufen eine State-Machine
+  (`beobachtet → dry-run → live → archiviert`) mit Quarantäne bei Wiederholfehlern. Manuell
+  gesetzte Zustände sind „heilig" und werden nie überschrieben.
+- **Fail-open Prinzip.** Fällt eine intelligente Komponente (LLM, Forecast) aus, degradiert das
+  System auf deterministische Schwellwert-Heuristiken — Monitoring bleibt funktionsfähig.
+
+## Entscheidungen (verworfene Alternativen)
+
+| Alternative | Warum verworfen |
+| --- | --- |
+| **Prometheus + Grafana + Alertmanager** | Exzellent für Metriken/Dashboards, aber ich wollte Alert-Logik, Forecasting und Remediation **integriert** — nicht drei Systeme verdrahten. Für die Host-Anzahl overkill. |
+| **Agent-basiert** (node_exporter / Agent je Host) | Zusätzliche Software + Port + Wartung auf jedem Host. Agentloses SSH deckt den Bedarf ohne diese Fläche. |
+| **Cloud-/SaaS-Monitoring** | Datenhoheit, laufende Kosten und — als Lernprojekt — der geringere Erkenntnisgewinn. |
+| **Nur Schwellwert-Alarme** | Reagiert erst, wenn es brennt. Trend-Forecasting verschafft Tage Vorlauf. |
+
+## Outcome
+
+- **Von manueller Stichprobe zu ereignisgetrieben.** Die vorher über den Monat verteilte manuelle
+  Kontrolle (Monitoring, Backup-Check, Config-Tracking, Incident-Analyse) — grob **~7 h/Monat** —
+  entfällt weitgehend; das System meldet sich nur noch, wenn etwas handlungsrelevant ist.
+- **Vorlauf bei Kapazitätsengpässen:** rund **14 Tage** Vorwarnung, bevor eine Platte die
+  kritische Schwelle erreicht — genug Zeit, geplant statt panisch zu reagieren.
+- **Platten-Vorsorge:** SMART-Trendanalyse zielt auf **~30 Tage** Vorwarnung vor einem Ausfall.
+- **Weniger Rauschen:** durch Dedup + Korrelation wird aus einem Störungs-Burst ein Alert statt
+  dutzender — die Voraussetzung dafür, dass man Alerts überhaupt ernst nimmt.
+- **Übertragbarkeit:** dieselben Muster (Checks, Alert-Hygiene, Kapazitätsplanung, Runbooks)
+  sind 1:1 die Themen professioneller Infrastruktur-Überwachung.
+
+<blockquote>
+Konkrete absolute Zahlen (Host-Anzahl, gesammelte Datenpunkte) bewusst generisch gehalten —
+die Architektur und die Design-Entscheidungen sind der eigentliche Kompetenz-Beleg.
+</blockquote>

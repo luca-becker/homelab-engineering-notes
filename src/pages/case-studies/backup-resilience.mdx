@@ -1,0 +1,98 @@
+---
+layout: ../../layouts/CaseStudyLayout.astro
+title: 'Backup & Resilience'
+summary: 'Ein mehrschichtiges 3-2-1-Backup mit Echtzeit-Replikation (RPO < 1 s), verschlüsseltem Offsite-Mirror und wöchentlich automatisch verifizierten Restores.'
+tags: ['Litestream', 'restic', 'GPG', 'RPO/RTO', 'DR-Drills']
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+## Was
+
+Ein dreischichtiges Backup-Konzept nach dem **3-2-1-Prinzip**: kontinuierliche
+Echtzeit-Replikation der Live-Datenbanken, periodische verschlüsselte Offsite-Snapshots und ein
+LAN-Backup — plus ein Job, der wöchentlich **automatisch einen Restore testet** und die
+Integrität der wiederhergestellten Daten prüft.
+
+## Problem / Warum
+
+Die meisten Homelab-Backups scheitern an zwei Punkten: **(a)** der Recovery Point ist so groß wie
+der Abstand zwischen zwei Backup-Läufen (bei einem Crash gehen Stunden verloren), und **(b)** man
+weiß nie, ob ein Backup wirklich *wiederherstellbar* ist — `exit 0` heißt nur „gelaufen", nicht
+„integer". Ein still korrumpiertes Backup ist das schlimmste Szenario. Beides wollte ich strukturell
+lösen, nicht durch Hoffnung.
+
+## Architektur
+
+<Mermaid code={`flowchart TB
+  subgraph primary["Primär-Host"]
+    app["Dienste + Datenbanken<br/>(SQLite, WAL)"]
+    ls["Litestream<br/>WAL-Streaming"]
+    rc["restic<br/>(täglich, verschlüsselt)"]
+    verify["Restore-Verify<br/>(wöchentlich)"]
+  end
+
+  lan[("LAN-Host<br/>rsync-Backups")]
+  offsite[("Offsite-Storage<br/>verschlüsselt, EU")]
+
+  app -- "jede Transaktion<br/>RPO < 1 s" --> ls --> offsite
+  app -- "GPG-verschlüsselt<br/>vor Upload" --> rc --> offsite
+  app -- "rsync über SSH" --> lan
+  offsite -. "Test-Restore<br/>in Scratch" .-> verify
+  verify -- "PRAGMA integrity_check" --> verify
+`} />
+
+<p class="muted mono" style="font-size:0.78rem;">Generische Knoten. Keine echten Provider-Hostnames, Buckets oder Zugangsdaten.</p>
+
+## Umsetzung / Wie
+
+**Stack:** Litestream (Echtzeit-SQLite-Replikation), restic (verschlüsselte, deduplizierende
+Offsite-Snapshots), rsync/SSH (LAN), GPG (AES-256, App-Layer-Verschlüsselung), `sqlite3 .backup`
+für WAL-konsistente Snapshots, systemd-Timer + Scheduler.
+
+Zentrale Design-Entscheidungen:
+
+- **Echtzeit-Replikation gegen RPO.** Litestream streamt jede committete SQLite-Transaktion als
+  WAL-Segment offsite. Damit sinkt der maximal mögliche Datenverlust vom Abstand zweier
+  Backup-Läufe (**Stunden**) auf **unter eine Sekunde** — ohne zusätzlichen Dienst mit eigenem UI.
+- **Zwei Ebenen, ein Konzept.** Litestream schließt das Fenster *zwischen* den restic-Läufen;
+  restic bleibt der periodische, versionierte, deduplizierte Voll-Backup-Pfad. Fällt eine Ebene
+  aus, trägt die andere weiter.
+- **Encrypt-before-egress.** Sekret-tragende Archive werden **auf dem Primär-Host** per GPG
+  (AES-256) verschlüsselt, bevor sie das Haus verlassen. Der LAN-Backup-Host sieht nur Chiffrat und
+  hält keine Passphrase. Private Schlüssel werden bewusst nicht gebackupt (Wiederherstellung aus dem
+  Secrets-Manager).
+- **Konsistente Snapshots.** Statt eine laufende SQLite-Datei zu kopieren (Gefahr eines „torn read"
+  im WAL-Modus) wird per `sqlite3 .backup` ein transaktional konsistenter Snapshot gezogen.
+- **Restore-Verifikation als First-Class-Job.** Wöchentlich wird ein definiertes Subset aus dem
+  Offsite-Repo in ein Scratch-Verzeichnis **wiederhergestellt** und jede DB per
+  `PRAGMA integrity_check` geprüft. Nur bei Fehler wird alarmiert; das Ergebnis wird protokolliert.
+- **Retention mit Bedacht.** Gap-tolerante, count-basierte Aufbewahrung (je ein Repräsentant pro
+  Woche/Monat) statt kalender-basierter Schnitte, die bei Lücken still zu wenig aufbewahren.
+
+## Entscheidungen (verworfene Alternativen)
+
+| Alternative | Warum verworfen |
+| --- | --- |
+| **Nur periodische Snapshots** (restic allein) | RPO = Backup-Intervall. Für Live-Datenbanken zu grob — daher Litestream als Echtzeit-Ebene davor. |
+| **Backup ohne Restore-Test** | `exit 0` beweist nicht Wiederherstellbarkeit. Ein stiller Korruptionsfehler bliebe unentdeckt — deshalb der wöchentliche Verify-Job. |
+| **Verschlüsselung erst beim Storage-Provider** | Dann lägen Klartext-Sekrete kurzzeitig außerhalb des vertrauten Hosts. Encrypt-before-egress hält Klartext auf dem Primär-Host. |
+| **gzip-Tarballs offsite** | Kleine Änderung ⇒ komplett neuer komprimierter Blob ⇒ kein Dedup. Unkomprimierte Tarballs lassen restics Chunking greifen (siehe Outcome). |
+
+## Outcome
+
+- **RPO < 1 Sekunde** für die Live-Datenbanken (vorher: Stunden) durch kontinuierliches
+  WAL-Streaming.
+- **Getestete Restores, nicht angenommene:** wöchentlicher automatischer Test-Restore +
+  `PRAGMA integrity_check`; halbjährlicher manueller Disaster-Recovery-Drill nach Runbook.
+- **~46× weniger Offsite-Churn:** durch Umstellung auf unkomprimierte, dedup-freundliche Tarballs
+  sank das tägliche Offsite-Delta bei kleinen Änderungen von ~1,4 GB auf ~30 MB (empirisch gemessen).
+- **Planbares Wachstum:** Live-DB deckelt sich per Retention bei ~140–250 MB; das Archiv wächst
+  kontrolliert ~1 GB/Jahr — auf dem Offsite-Storage **< 1 %/Jahr** und damit vernachlässigbar.
+- **Geo-Redundanz:** verschlüsselter Mirror in einem separaten Rechenzentrum schließt das
+  Single-Point-of-Failure-Risiko „LAN-Backup steht im selben Raum wie das Original".
+
+<blockquote>
+Provider, Bucket-Namen, Hostnames und Zugangsdaten sind hier bewusst nicht genannt — relevant ist
+das Konzept: mehrschichtig, verschlüsselt, und regelmäßig durch echte Restores bewiesen.
+</blockquote>

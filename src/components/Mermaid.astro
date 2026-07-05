@@ -1,0 +1,9 @@
+---
+// Rendert ein Mermaid-Diagramm. Der Graph-Code kommt als `code`-Prop.
+// Die eigentliche Initialisierung passiert einmalig pro Seite im BaseLayout.
+const { code } = Astro.props as { code: string };
+---
+
+<div class="mermaid-wrap">
+  <pre class="mermaid">{code}</pre>
+</div>
