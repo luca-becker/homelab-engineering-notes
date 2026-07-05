@@ -1,3 +1,5 @@
+#WIP
+
 # Homelab Engineering Notes
 
 **Live:** https://luca-becker.github.io/homelab-engineering-notes/
