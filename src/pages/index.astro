@@ -1,9 +1,10 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 
+const base = import.meta.env.BASE_URL; // endet mit '/'
 const caseStudies = [
   {
-    href: '/case-studies/observability',
+    href: 'case-studies/observability',
     n: '01',
     title: 'Observability & Monitoring',
     summary:
@@ -11,7 +12,7 @@ const caseStudies = [
     tags: ['Python', 'SSH-agentless', 'Alerting', 'Forecasting'],
   },
   {
-    href: '/case-studies/backup-resilience',
+    href: 'case-studies/backup-resilience',
     n: '02',
     title: 'Backup & Resilience',
     summary:
@@ -19,7 +20,7 @@ const caseStudies = [
     tags: ['Litestream', 'restic', 'RPO/RTO', 'DR-Drills'],
   },
   {
-    href: '/case-studies/public-edge',
+    href: 'case-studies/public-edge',
     n: '03',
     title: 'Public-Edge & Routing',
     summary:
@@ -62,7 +63,7 @@ const stack = [
     <h2>Case Studies</h2>
     <div class="cards">
       {caseStudies.map((cs) => (
-        <a class="card" href={cs.href}>
+        <a class="card" href={`${base}${cs.href}`}>
           <div class="card-top">
             <span class="card-n mono">{cs.n}</span>
             <span class="card-arrow mono">→</span>

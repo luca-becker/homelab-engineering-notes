@@ -9,11 +9,12 @@ interface Props {
   };
 }
 const { frontmatter } = Astro.props;
+const base = import.meta.env.BASE_URL; // endet mit '/'
 ---
 
 <BaseLayout title={`${frontmatter.title} · homelab-notes`} description={frontmatter.summary}>
   <article class="case-study">
-    <a class="back" href="/#case-studies">&larr; Übersicht</a>
+    <a class="back" href={`${base}#case-studies`}>&larr; Übersicht</a>
     <h1>{frontmatter.title}</h1>
     <p class="lede">{frontmatter.summary}</p>
     {frontmatter.tags && (

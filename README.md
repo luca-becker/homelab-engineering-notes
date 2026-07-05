@@ -1,5 +1,7 @@
 # Homelab Engineering Notes
 
+**Live:** https://ruuntii.github.io/homelab-engineering-notes/
+
 Öffentliche, statische Portfolio-Seite mit drei Engineering-Case-Studies aus meinem privaten
 Homelab (Observability, Backup & Resilience, Public-Edge & Routing).
 
@@ -44,8 +46,23 @@ example.dev {
 }
 ```
 
-Die Domain (`site:` in `astro.config.mjs`) ist ein Platzhalter (`example.dev`) und wird beim
-Deploy eingetragen.
+### GitHub Pages (aktuell)
+
+Deployt automatisch bei jedem Push auf `main` via `.github/workflows/deploy.yml`
+(Astro-Build → GitHub Pages). Pages-Quelle im Repo: **Settings → Pages → Source: GitHub Actions**.
+
+### Umzug auf eigene Domain
+
+In `astro.config.mjs` `site` auf die Domain setzen und `base` auf `'/'` ändern (bzw. entfernen).
+Dann `dist/` hinter Caddy ausliefern — z. B.:
+
+```
+deine-domain.example {
+    root * /var/www/homelab-notes/dist
+    file_server
+    encode zstd gzip
+}
+```
 
 ## Sanitisierung
 

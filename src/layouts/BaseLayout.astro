@@ -6,6 +6,7 @@ interface Props {
   description?: string;
 }
 const { title, description = 'Engineering Notes — Homelab-Infrastruktur, Observability, Backup & Public-Edge.' } = Astro.props;
+const base = import.meta.env.BASE_URL; // endet mit '/'
 ---
 
 <!doctype html>
@@ -16,16 +17,16 @@ const { title, description = 'Engineering Notes — Homelab-Infrastruktur, Obser
     <meta name="generator" content={Astro.generator} />
     <meta name="description" content={description} />
     <meta name="color-scheme" content="dark" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
     <title>{title}</title>
   </head>
   <body>
     <header class="topbar">
       <div class="wrap">
-        <a class="brand" href="/"><span class="prompt">~/</span>homelab-notes</a>
+        <a class="brand" href={base}><span class="prompt">~/</span>homelab-notes</a>
         <nav>
-          <a href="/#case-studies">Case&nbsp;Studies</a>
-          <a href="/#stack">Stack</a>
+          <a href={`${base}#case-studies`}>Case&nbsp;Studies</a>
+          <a href={`${base}#stack`}>Stack</a>
         </nav>
       </div>
     </header>
